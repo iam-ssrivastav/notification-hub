@@ -1,11 +1,14 @@
 package com.notificationhub.service;
 
-import com.notificationhub.event.NotificationEventPublisher;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.notificationhub.model.*;
 import com.notificationhub.repository.NotificationRepository;
+import com.notificationhub.repository.OutboxRepository;
 import com.notificationhub.repository.TemplateRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,17 +22,29 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final TemplateRepository templateRepository;
-    private final NotificationEventPublisher eventPublisher;
+    private final OutboxRepository outboxRepository;
+    private final ObjectMapper objectMapper;
     private final List<NotificationChannelService> channelServices;
 
-    public NotificationService(NotificationRepository notificationRepository, TemplateRepository templateRepository,
-            NotificationEventPublisher eventPublisher, List<NotificationChannelService> channelServices) {
+    @Value("${app.kafka.topic.notification-events}")
+    private String topicName;
+
+    public NotificationService(NotificationRepository notificationRepository,
+            TemplateRepository templateRepository,
+            OutboxRepository outboxRepository,
+            ObjectMapper objectMapper,
+            List<NotificationChannelService> channelServices) {
         this.notificationRepository = notificationRepository;
         this.templateRepository = templateRepository;
-        this.eventPublisher = eventPublisher;
+        this.outboxRepository = outboxRepository;
+        this.objectMapper = objectMapper;
         this.channelServices = channelServices;
     }
 
+    /**
+     * Creates a notification and saves an outbox event in the same transaction.
+     * This ensures reliable event delivery using the Transactional Outbox Pattern.
+     */
     @Transactional
     public Notification createNotification(NotificationEvent event) {
         String content = event.getContent();
@@ -65,10 +80,35 @@ public class NotificationService {
         event.setContent(content);
         event.setSubject(subject);
 
-        // Publish to Kafka
-        eventPublisher.publishNotificationEvent(event);
+        // Save to Outbox (Transactional Outbox Pattern)
+        saveToOutbox(savedNotification, event);
+
+        log.info("Notification saved with ID: {} and outbox event created", savedNotification.getId());
 
         return savedNotification;
+    }
+
+    /**
+     * Saves event to outbox table for reliable Kafka publishing.
+     */
+    private void saveToOutbox(Notification notification, NotificationEvent event) {
+        try {
+            String payload = objectMapper.writeValueAsString(event);
+
+            OutboxEvent outboxEvent = OutboxEvent.builder()
+                    .aggregateType("NOTIFICATION")
+                    .aggregateId(String.valueOf(notification.getId()))
+                    .eventType("NOTIFICATION_CREATED")
+                    .payload(payload)
+                    .topic(topicName)
+                    .build();
+
+            outboxRepository.save(outboxEvent);
+            log.info("Saved event to Outbox: NOTIFICATION_CREATED - {}", notification.getId());
+
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException("Failed to serialize notification event", e);
+        }
     }
 
     public void processNotification(NotificationEvent event) {

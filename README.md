@@ -11,13 +11,17 @@ A production-ready, event-driven notification system built with **Spring Boot** 
 
 - **Event-Driven Architecture**: Asynchronous notification processing using Apache Kafka
 - **Multi-Channel Support**: Email, SMS, and Push notifications
+- **Transactional Outbox Pattern**: Reliable event publishing with database-first approach
+- **Circuit Breaker (Resilience4j)**: Fault-tolerant delivery with automatic fallbacks
 - **Automatic Retry Mechanism**: Exponential backoff with configurable retry attempts
 - **Dead Letter Queue (DLQ)**: Graceful handling of failed messages
 - **Dynamic Templates**: Create and manage notification templates with variable substitution
 - **Delivery Tracking**: Real-time status updates (PENDING → SENT/FAILED/RETRYING/DLQ)
 - **Persistence**: PostgreSQL for notifications and templates
 - **Scalable**: Horizontally scalable with Kafka consumer groups
+- **Observability**: Spring Actuator + Circuit Breaker health indicators
 - **Docker Ready**: Complete Docker Compose setup for local development
+
 
 ## 🏗️ Architecture
 
